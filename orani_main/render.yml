@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: orani_main
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: daphne orani_main.asgi:application
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: orani_main.settings
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
