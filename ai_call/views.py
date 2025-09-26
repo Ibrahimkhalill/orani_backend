@@ -23,9 +23,9 @@ from datetime import datetime
 import pytz  # optional, for timezone conversion
 import requests
 
-TWILIO_ACCOUNT_SID = os.getenv("ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("PHONE_NUMBER")
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
 
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -564,9 +564,9 @@ from twilio.jwt.access_token.grants import VoiceGrant
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_twilio_token(request):
-    api_key = "SK7b925482fcfcd3b522874477beef8566"           
-    api_secret = "GIwbzhvPFoNCpaqD8s4KHsfvPYvnrUpS"       
-    outgoing_app_sid = "APcc492ac8a5dbbecc470b9ebdb3e1e5ea"  
+    api_key = os.getenv("TWILLIO_API_KEY")         
+    api_secret = os.getenv("TWILLIO_API_SECRET") 
+    outgoing_app_sid = os.getenv("TWILLIO_OUTGOING_APP_SID")
     identity = str(request.user.id) 
 
 
