@@ -31,6 +31,35 @@ class BusinessKnowledge(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+
+class CompanyInformation(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    company_name = models.TextField(blank=True, null=True)
+    website_url = models.CharField(max_length=1000, blank=True, null=True)
+    email = models.EmailField(blank=True, null=True)
+    company_details = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PriceInfo(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    package_name = models.TextField(blank=True, null=True)
+    package_price = models.CharField(max_length=1000, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+
+
+class BookingLink(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    booking_title = models.TextField( blank=True, null=True)
+    booking_link = models.CharField(max_length=400,blank=True, null=True)
+
+
+
+
 class Call(models.Model):
     CALL_STATUS_CHOICES = [
         ('started', 'Started'),
@@ -65,3 +94,86 @@ class CallSummary(models.Model):
     caller_intent = models.CharField(max_length=200, blank=True)
     follow_up_needed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+
+from multiselectfield import MultiSelectField
+
+class WorkingDay(models.TextChoices):
+    MONDAY = 'Mon', 'Monday'
+    TUESDAY = 'Tue', 'Tuesday'
+    WEDNESDAY = 'Wed', 'Wednesday'
+    THURSDAY = 'Thu', 'Thursday'
+    FRIDAY = 'Fri', 'Friday'
+    SATURDAY = 'Sat', 'Saturday'
+    SUNDAY = 'Sun', 'Sunday'
+
+class HoursOfOperation(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hours_of_operation')
+    days = MultiSelectField(choices=WorkingDay.choices)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+
+    def __str__(self):
+        return f"{self.user.email} - {', '.join(self.days)}: {self.start_time} to {self.end_time}"
+
+
+
+
+
+from django.db import models
+
+from django.db import models
+from multiselectfield import MultiSelectField
+
+class CallData(models.Model):
+    CALL_TYPES = (
+        ('Client Inquiries', 'Client Inquiries'),
+        ('Bookings', 'Bookings'),
+        ('Support', 'Support'),
+        ('Sales', 'Sales'),
+        ('Follow-up', 'Follow-up'),
+        ('Personalized', 'Personalized'),
+        ('Mixed', 'Mixed'),
+    )
+    
+    INDUSTRIES = (
+        ('Real Estate', 'Real Estate'),
+        ('Business Development', 'Business Development'),
+        ('Technology', 'Technology'),
+        ('Operation', 'Operation'),
+        ('Accounting', 'Accounting'),
+        ('Recruiting', 'Recruiting'),
+        ('Sales', 'Sales'),
+        ('Others', 'Others'),
+    )
+    
+    WORK_STYLES = (
+        ('Solo', 'Solo'),
+        ('Small Team', 'Small Team'),
+        ('Growing Business', 'Growing Business'),
+        ('Remote', 'Remote'),
+        ('Freelancer', 'Freelancer'),
+        ('On-Site', 'On-Site'),
+        ('Others', 'Others'),
+    )
+    
+    ASSISTANCE_TYPES = (
+        ('Answer Calls', 'Answer Calls'),
+        ('Share Info', 'Share Info'),
+        ('Handle Bookings', 'Handle Bookings'),
+        ('Schedule Meetings', 'Schedule Meetings'),
+        ('FAQs', 'FAQs'),
+        ('Collect Leads', 'Collect Leads'),
+        ('Others', 'Others'),
+    )
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    call_types = MultiSelectField(choices=CALL_TYPES, max_length=100)
+    industries = MultiSelectField(choices=INDUSTRIES, max_length=100)
+    work_styles = MultiSelectField(choices=WORK_STYLES, max_length=100)
+    assistances = MultiSelectField(choices=ASSISTANCE_TYPES, max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{', '.join(self.call_types)} - {', '.join(self.industries)}"

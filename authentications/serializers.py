@@ -11,13 +11,37 @@ User = get_user_model()
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['id', 'user', 'name', 'profile_picture', 'joined_date']
+        fields = ['id', 'user', 'name', 'profile_picture', 'has_completed_onboarding', 'joined_date']
         read_only_fields = ['id', 'user', 'joined_date']
 
-    def validate(self, data):
-        if 'name' in data and not data['name']:
-            raise serializers.ValidationError({'name': 'Name cannot be empty'})
-        return data
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        request = self.context.get('request')
+        if instance.profile_picture and request:
+            rep['profile_picture'] = request.build_absolute_uri(instance.profile_picture.url)
+        return rep
+
+
+
+
+class CustomUserUpdateSerializer(serializers.ModelSerializer):
+    user_profile = UserProfileSerializer()
+
+    class Meta:
+        model = User
+        fields = ['id', 'phone_number', 'email', 'role', 'is_verified', 'user_profile']
+        read_only_fields = ['id', 'is_active', 'is_staff', 'is_superuser']
+
+    def update(self, instance, validated_data):
+    # Update email
+        email = validated_data.get('email')
+        if email:
+            instance.email = email
+            instance.save()
+
+        return instance
+
+
 
 
 # ---------------------------
@@ -33,9 +57,12 @@ class CustomUserSerializer(serializers.ModelSerializer):
 
     def get_user_profile(self, obj):
         try:
-            return UserProfileSerializer(obj.user_profile).data
+            # Pass the request context so nested serializer can build full image URL
+            context = self.context
+            return UserProfileSerializer(obj.user_profile, context=context).data
         except UserProfile.DoesNotExist:
             return None
+
 
 
 # ---------------------------
@@ -53,27 +80,32 @@ class CustomUserCreateSerializer(serializers.ModelSerializer):
             'email': {'required': False},
         }
 
-    def validate(self, data):
-        phone_number = data.get('phone_number')
-        if not phone_number:
-            raise serializers.ValidationError({'phone_number': 'This field is required'})
-        if User.objects.filter(phone_number=phone_number, is_verified=True).exists():
-            raise serializers.ValidationError({'phone_number': 'User already exists'})
-        return data
-
     def create(self, validated_data):
         name = validated_data.pop('name', None)
         phone_number = validated_data.get('phone_number')
 
-        # delete unverified duplicates
-        User.objects.filter(phone_number=phone_number, is_verified=False).delete()
+        # Check if a verified user already exists
+        verified_user = User.objects.filter(phone_number=phone_number, is_verified=True).first()
+        if verified_user:
+            # Skip creation and just return the existing verified user
+            return verified_user
 
-        user = User.objects.create_user(
+        # Otherwise, create or update unverified user
+        user, created = User.objects.update_or_create(
             phone_number=phone_number,
-            role=validated_data.get('role', 'user')
+            defaults={
+                'role': validated_data.get('role', 'user'),
+                'is_active': False,     # inactive until verification
+                'is_verified': False,   # not verified yet
+                'email': validated_data.get('email')
+            }
         )
-        UserProfile.objects.create(user=user, name=name)
+
+        # Create or update profile
+        UserProfile.objects.update_or_create(user=user)
+
         return user
+
 
 
 # ---------------------------

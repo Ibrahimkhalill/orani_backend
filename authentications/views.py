@@ -12,12 +12,13 @@ from .serializers import (
     UserProfileSerializer,
     OTPSerializer,
     AppleLoginSerializer,
-    PhoneLoginSerializer
+    PhoneLoginSerializer,
+    CustomUserUpdateSerializer
 
 )
 
 from django.http import JsonResponse
-
+import re
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.password_validation import validate_password
@@ -41,7 +42,7 @@ User = get_user_model()
 
 
 def generate_otp():
-    return str(random.randint(100000, 999999))
+    return str(random.randint(10000, 99999))
 
 
 def send_otp_sms(phone_number, otp):
@@ -64,6 +65,7 @@ def send_otp_sms(phone_number, otp):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user(request):
+    
     serializer = CustomUserCreateSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
@@ -78,13 +80,29 @@ def register_user(request):
             try:
                 result = send_otp_sms(phone_number=phone_number, otp=otp)
             except Exception as e:
+                raw_error = str(e)
+
+                # Remove ANSI color codes
+                ansi_escape = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
+                clean_error = ansi_escape.sub('', raw_error).strip()
+
+                # Optionally, extract just the important line
+                clean_line = None
+                for line in clean_error.split("\n"):
+                    if "Invalid 'To' Phone Number" in line:
+                        clean_line = line.strip()
+                        break
+                if not clean_line:
+                    clean_line = clean_error.split("\n")[0]  # fallback
+
                 return error_response(
                     code=500,
-                    message="Failed to send OTP SMS",
-                    details={"error": [str(e)]}
+                    message=clean_line,
+                    details={"twilio_error": clean_line}
                 )
+
         return Response({
-            "message": "User registered. Please verify your phone number with the OTP sent",
+            "message": "Please verify your phone number with the OTP sent",
             "user_id": user.id,
             "result": result
         }, status=status.HTTP_201_CREATED)
@@ -154,6 +172,7 @@ def verify_login_otp(request):
             )
         if not user.is_verified:
             user.is_verified = True
+            user.is_active = True
             user.save()
 
         otp_obj.delete()
@@ -243,14 +262,18 @@ def user_profile(request):
 
     if request.method == 'GET':
         user = CustomUser.objects.get(id=request.user.id)
-        serializer = CustomUserSerializer(user)
+        serializer = CustomUserSerializer(user, context={'request': request})
         return Response(serializer.data)
 
     if request.method == 'PUT':
-        serializer = UserProfileSerializer(
-            profile, data=request.data, partial=True)
-        if serializer.is_valid():
+        print("data", request)
+        print("FILES:", request.FILES) 
+        user = request.user
+        serializer = CustomUserUpdateSerializer(user, data=request.data, partial=True, context={'request': request})
+        profileSerializer = UserProfileSerializer(profile, data=request.data,  partial=True, context={'request': request})
+        if serializer.is_valid() and profileSerializer.is_valid():
             serializer.save()
+            profileSerializer.save()
             return Response(serializer.data)
         return error_response(code=400, details=serializer.errors)
 
@@ -267,11 +290,7 @@ def create_otp(request):
 
     try:
         user = User.objects.get(id=user_id)
-        if user.is_verified:
-            return error_response(
-                code=400,
-                details={"user_id": ["This account is already verified"]}
-            )
+
     except User.DoesNotExist:
         return error_response(
             code=404,
@@ -325,11 +344,7 @@ def verify_otp(request):
                 details={"otp": ["The OTP has expired"]}
             )
 
-        if user.is_verified:
-            return error_response(
-                code=400,
-                details={"phone_number": ["This account is already verified"]}
-            )
+
 
         user.is_verified = True
         user.save()
