@@ -24,5 +24,6 @@ urlpatterns = [
     path('api/auth/', include("authentications.urls")),
     path('api/payment/', include("payment.urls")),
     path('api/twilo/', include("ai_call.urls")),
+    path("api/subscriptions/", include("subscribtion.urls")),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

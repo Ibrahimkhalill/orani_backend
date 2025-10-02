@@ -105,7 +105,9 @@ class CallDataSerializer(serializers.ModelSerializer):
         industries = validated_data.pop('industries')
         work_styles = validated_data.pop('work_styles')
         assistances = validated_data.pop('assistances')
+        user = validated_data.pop('user')
         instance = CallData.objects.create(
+            user = user,
             call_types=','.join(call_types),
             industries=','.join(industries),
             work_styles=','.join(work_styles),
@@ -114,12 +116,37 @@ class CallDataSerializer(serializers.ModelSerializer):
         return instance
 
     def update(self, instance, validated_data):
-        instance.call_types = ','.join(validated_data.get('call_types', instance.call_types.split(',')))
-        instance.industries = ','.join(validated_data.get('industries', instance.industries.split(',')))
-        instance.work_styles = ','.join(validated_data.get('work_styles', instance.work_styles.split(',')))
-        instance.assistances = ','.join(validated_data.get('assistances', instance.assistances.split(',')))
+        # Handle call_types
+        call_types = validated_data.get('call_types', instance.call_types)
+        if isinstance(call_types, list):
+            instance.call_types = ','.join(call_types)
+        else:
+            instance.call_types = call_types
+
+        # Handle industries
+        industries = validated_data.get('industries', instance.industries)
+        if isinstance(industries, list):
+            instance.industries = ','.join(industries)
+        else:
+            instance.industries = industries
+
+        # Handle work_styles
+        work_styles = validated_data.get('work_styles', instance.work_styles)
+        if isinstance(work_styles, list):
+            instance.work_styles = ','.join(work_styles)
+        else:
+            instance.work_styles = work_styles
+
+        # Handle assistances
+        assistances = validated_data.get('assistances', instance.assistances)
+        if isinstance(assistances, list):
+            instance.assistances = ','.join(assistances)
+        else:
+            instance.assistances = assistances
+
         instance.save()
         return instance
+
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
@@ -148,3 +175,9 @@ class AIAssistantSerializer(serializers.ModelSerializer):
         model = AIAssistant
         fields = ['user', 'vapi_assistant_id', 'name', 'voice_settings', 'created_at']
         read_only_fields = ['created_at']
+        
+class PriorityContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PriorityContact
+        fields = ['id', 'user', 'name','phone_number', 'created_at']
+        read_only_fields = ['id', 'created_at', 'user']

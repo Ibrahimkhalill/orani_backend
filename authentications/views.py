@@ -27,9 +27,9 @@ from orani_main.utils import error_response
 import random
 from twilio.rest import Client
 import os
-TWILIO_ACCOUNT_SID = os.getenv("ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("PHONE_NUMBER")
+TWILIO_ACCOUNT_SID = os.getenv("TWILLIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILLIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILLIO_PHONE_NUMBER")
 
 
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)

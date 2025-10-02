@@ -36,8 +36,13 @@ urlpatterns = [
     
     path('save-calldata/', views.save_calldata, name='save-calldata'),
     
+    path('get-calldata/', views.get_bussines_call_data, name='get-calldata'),
+    
+    
     path('ai-assistant/', views.create_or_update_ai_assistant, name='create_or_update_ai_assistant'),
     
+    #save priority contact
+    path('priority-contacts/', views.save_update_priocity_contact, name='create_or_update_priority_contact'),
 ]
     
     

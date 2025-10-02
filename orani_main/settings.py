@@ -49,7 +49,8 @@ INSTALLED_APPS = [
     'payment',
     'apscheduler',
     'corsheaders',
-    'ai_call'
+    'ai_call',
+    'subscribtion'
 
 
 ]

@@ -15,6 +15,7 @@ from .serializers import *
 from orani_main.utils import error_response
 from .models import PhoneNumber , CompanyInformation
 from .serializers import *
+from authentications.serializers import UserProfileSerializer
 import random
 from twilio.rest import Client
 from authentications.models import UserProfile
@@ -23,13 +24,13 @@ from datetime import datetime
 import pytz  # optional, for timezone conversion
 import requests
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+TWILIO_ACCOUNT_SID = os.getenv("TWILLIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILLIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILLIO_PHONE_NUMBER")
 
 
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
+print("client",TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -87,67 +88,72 @@ def get_assigned_phone_number(request):
         )
 
 
-
-
-
-
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def save_phone_number(request):
     user = request.user
     phone_number = request.data.get("phone_number")
-    
-    
-    if PhoneNumber.objects.filter(user=user).exists():
+
+    if not phone_number:
+        return Response(
+            {"message": "Phone number is required."}, status=400
+        )
+
+    # Check if this number is already assigned to this user
+    existing = PhoneNumber.objects.filter(user=user).first()
+    if existing and existing.phone_number == phone_number:
         save_knowdege_data(request)
-        return error_response(message=" phone number is already assign the user", code=200)
+        return Response(
+            {"message": "Phone number is already assigned to this user."},
+            status=200,
+        )
 
-    
-    # Step 2: Check if this number is already taken by another user
+    # Check if number is used by another user
     if PhoneNumber.objects.filter(phone_number=phone_number).exclude(user=user).exists():
-        return error_response(message="This phone number is already saved by another user", code=400)
+        return Response(
+            {"message": "This phone number is already saved by another user."},
+            status=409,
+        )
 
-    # Step 3: Save or update number for this user
+    # Save or update the phone number for this user
     saved_number, created = PhoneNumber.objects.update_or_create(
         user=user,
-        defaults={
-            "phone_number": phone_number,
-            "is_active": True
-        }
+        defaults={"phone_number": phone_number, "is_active": True}
     )
 
-    # Step 4: Update Twilio webhooks
+    # Twilio integration
     try:
+        # Check if number exists in Twilio? Optional: fetch existing numbers
         client.incoming_phone_numbers.create(
             phone_number=phone_number,
             voice_url="https://api.vapi.ai/twilio/inbound_call",
             voice_method="POST",
-            # Set status callback for call events
             status_callback="https://api.vapi.ai/twilio/call_status",
             status_callback_method="POST"
         )
-        
-      
     except Exception as e:
-        print(e)
-        saved_number.delete()
-        return error_response(message="Failed to update Twilio webhooks", code=400)
+        print("Twilio Error:", e)
+        # Optionally mark the number inactive instead of deleting
+        saved_number.is_active = False
+        saved_number.save()
+        return Response(
+            {"message": "Failed to update Twilio webhooks."}, status=400
+        )
 
-    # Step 5: Mark onboarding as completed
+    # Mark onboarding as completed
     user_profile, _ = UserProfile.objects.get_or_create(user=user)
     user_profile.has_completed_onboarding = True
     user_profile.save()
-    
-    userProfileSerializer = userProfileSerializer(user_profile)
-    
+
+    user_profile_serializer = UserProfileSerializer(user_profile)
+    # Save knowledge data
     save_knowdege_data(request)
 
     return Response(
         {
-            "message": "Phone number saved (and purchased if needed) successfully",
+            "message": "Phone number saved successfully.",
             "phone_number": phone_number,
-            "user_profile": userProfileSerializer.data
-            
+            "user_profile": user_profile_serializer.data,
         },
         status=201
     )
@@ -163,7 +169,7 @@ def save_knowdege_data(request):
 
     # Post to other backend
     try:
-        backend_url = "https://e177403aa007.ngrok-free.app/setup/assistant"
+        backend_url = f'{os.getenv("AI_BACKEND_URL")}/setup/assistant'
         headers = {"Content-Type": "application/json"}
         post_response = requests.post(backend_url, json=response_data, headers=headers)
         print("Other backend response:", post_response.status_code, post_response.text)
@@ -228,9 +234,15 @@ def user_call_logs(request):
     call_list = []
     phone = PhoneNumber.objects.filter(user=user).first()
 
+    if not phone:
+        return Response({
+            "error": "User does not have a phone number assigned."
+        }, status=200)
+
     user_timezone = getattr(user, "timezone", "UTC")
     tz = pytz.timezone(user_timezone)
-    incoming_calls = client.calls.list(to=phone.phone_number )
+
+    incoming_calls = client.calls.list(to=phone.phone_number)
     outgoing_calls = client.calls.list(from_=phone.phone_number)
     all_calls = incoming_calls + outgoing_calls
 
@@ -255,69 +267,78 @@ def user_call_logs(request):
             "type": "incoming" if c.direction == "inbound" else "outgoing"
         })
 
-    
-
     return Response({
-        "phone_number": phone.phone_number if phone else None,
+        "phone_number": phone.phone_number,
         "total_calls": len(all_calls_sorted),
         "answered_calls": len([c for c in all_calls_sorted if c.status == "completed"]),
         "calls": call_list
     })
-    
+
     
 def get_call_summary(client, phone_number, user_timezone="UTC"):
     """
     Twilio call summary for a given phone number.
     """
-    tz = pytz.timezone(user_timezone)
-
-    # Twilio calls
-    incoming_calls = client.calls.list(to=phone_number)
-    outgoing_calls = client.calls.list(from_=phone_number)
-    all_calls = incoming_calls + outgoing_calls
-
-    # Sort by start_time (newest first)
-    all_calls_sorted = sorted(
-        all_calls,
-        key=lambda c: c.start_time or datetime.min,
-        reverse=True
-    )
-
-    incoming_count = 0
-    outgoing_count = 0
-    missed_count = 0
-    received_count = 0
-
-    # collect status counts
-    status_list = []
-
-    for c in all_calls_sorted:
-        call_type = "incoming" if c.direction == "inbound" else "outgoing"
-
-        status_list.append(c.status)
-
-        if call_type == "incoming":
-            incoming_count += 1
-            if c.status == "completed":
-                received_count += 1
-                
-        elif c.status in ["no-answer", "busy", "failed"]:
-                print("yes i am im")
-                missed_count += 1
-        else:
-            outgoing_count += 1
-
-    # summary by status (completed, no-answer, busy, failed etc.)
     
-        # print("status_list",status_list)
-    return {
-        "incoming_calls": incoming_count,
-        "outgoing_calls": outgoing_count,
-        "missed_calls": missed_count,
-        "received_calls": received_count,
-        "total_calls": len(all_calls_sorted),
+    try :
+        tz = pytz.timezone(user_timezone)
+
+        # Twilio calls
+        incoming_calls = client.calls.list(to=phone_number)
+        outgoing_calls = client.calls.list(from_=phone_number)
+        all_calls = incoming_calls + outgoing_calls
+
+        # Sort by start_time (newest first)
+        all_calls_sorted = sorted(
+            all_calls,
+            key=lambda c: c.start_time or datetime.min,
+            reverse=True
+        )
+
+        incoming_count = 0
+        outgoing_count = 0
+        missed_count = 0
+        received_count = 0
+
+        # collect status counts
+        status_list = []
+
+        for c in all_calls_sorted:
+            call_type = "incoming" if c.direction == "inbound" else "outgoing"
+
+            status_list.append(c.status)
+
+            if call_type == "incoming":
+                incoming_count += 1
+                if c.status == "completed":
+                    received_count += 1
+                    
+            elif c.status in ["no-answer", "busy", "failed"]:
+                    print("yes i am im")
+                    missed_count += 1
+            else:
+                outgoing_count += 1
+
+        # summary by status (completed, no-answer, busy, failed etc.)
         
-    }
+            # print("status_list",status_list)
+        return {
+            "incoming_calls": incoming_count,
+            "outgoing_calls": outgoing_count,
+            "missed_calls": missed_count,
+            "received_calls": received_count,
+            "total_calls": len(all_calls_sorted),
+            
+        }
+    except Exception as e:
+        print("Error in get_call_summary:", e)
+        return {
+            "incoming_calls": 0,
+            "outgoing_calls": 0,
+            "missed_calls": 0,
+            "received_calls": 0,
+            "total_calls": 0,
+        }
 
     
     
@@ -568,7 +589,7 @@ def get_twilio_token(request):
     api_secret = os.getenv("TWILLIO_API_SECRET") 
     outgoing_app_sid = os.getenv("TWILLIO_OUTGOING_APP_SID")
     identity = str(request.user.id) 
-
+    print("api_key, api_secret, outgoing_app_sid", api_key, api_secret, outgoing_app_sid)
 
     # Create token
     token = AccessToken(TWILIO_ACCOUNT_SID, api_key, api_secret, identity=identity)
@@ -618,11 +639,79 @@ def get_user_data_dict(user):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def save_calldata(request):
-    serializer = CallDataSerializer(data=request.data)
+    user = request.user
+    print("User:", user)
+    print("Request data:", request.data)
+
+    # Check if user already has CallData
+    instance = CallData.objects.filter(user=user).first()
+
+    if instance:
+        # Update existing CallData
+        serializer = CallDataSerializer(instance, data=request.data)
+    else:
+        # Create new CallData
+        serializer = CallDataSerializer(data=request.data)
+
     if serializer.is_valid():
-        serializer.save(user=request.user)  # Uses the custom create() method from the serializer
+        serializer.save(user=user)  # Will create or update as needed
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     else:
-        # Print errors to console/logs
-        print("CallDataSerializer errors:", serializer.errors)
+        print("Serializer errors:", serializer.errors)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_bussines_call_data(request):
+    user = request.user
+    call_data = CallData.objects.filter(user=user).first()
+    if not call_data:
+        return Response({'detail': 'No call data found.'}, status=status.HTTP_404_NOT_FOUND)
+    serializer = CallDataSerializer(call_data)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+   
+
+
+
+
+@api_view(['POST', 'GET'])
+@permission_classes([IsAuthenticated])
+def save_update_priocity_contact(request):
+   
+    if request.method == 'GET':
+        try:
+            priority_contact = PriorityContact.objects.get(user=request.user)
+        except PriorityContact.DoesNotExist:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PriorityContactSerializer(priority_contact, many=True)
+        if serializer.is_valid():
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+  
+    elif request.method == 'POST':
+        number = request.data.get("number", None)
+
+       
+        if number:
+            try:
+                priority_contact = PriorityContact.objects.get(phone_number=number, user=request.user)
+                priority_contact.delete()
+                return Response(
+                    {"detail": f"Priority contact {number} removed successfully"},
+                    status=status.HTTP_200_OK
+                )
+            except PriorityContact.DoesNotExist:
+                return Response({"detail": "Contact not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        
+        serializer = PriorityContactSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        print("serializer.errors",serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

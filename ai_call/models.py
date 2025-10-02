@@ -7,7 +7,7 @@ User = get_user_model()
 
 class AIAssistant(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    vapi_assistant_id = models.CharField(max_length=100, unique=True)
+    vapi_assistant_id = models.CharField(max_length=100, blank=True, null=True)
     name = models.CharField(max_length=200)
     voice_settings = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -21,6 +21,14 @@ class PhoneNumber(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+
+
+class PriorityContact(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=400, blank=True, null=True)
+    phone_number = models.CharField(max_length=20)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
 class BusinessKnowledge(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
