@@ -6,3 +6,4 @@ from .models import *
 admin.site.register(CompanyInformation)
 admin.site.register(CallData)
 admin.site.register(AIAssistant)
+admin.site.register(HoursOfOperation)

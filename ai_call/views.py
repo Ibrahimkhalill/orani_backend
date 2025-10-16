@@ -32,30 +32,84 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILLIO_PHONE_NUMBER")
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 print("client",TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN)
 
+
+import requests
+
+def get_user_location(request):
+    # Get IP from request
+    ip = get_client_ip(request)  # custom function to handle proxies, etc.
+
+    # Use free API (example)
+    resp = requests.get(f"https://ipapi.co/{ip}/json/")
+    if resp.status_code == 200:
+        data = resp.json()
+        return {
+            "city": data.get("city"),
+            "region": data.get("region"),
+            "country": data.get("country_code"),
+            "area_code": data.get("area_code")  # if provided
+        }
+    return None
+
+def get_client_ip(request):
+    """Get client IP handling proxies"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_virtual_numbers(request):
-    # Fetch 4 available Twilio numbers
-    numbers = client.available_phone_numbers("US").local.list(
-        sms_enabled=True,
-        voice_enabled=True,
-        limit=4
-    )
+    data = get_user_location(request)
     
-    # Get phone numbers already saved in the DB
-    existing_numbers = PhoneNumber.objects.values_list(
-        "phone_number", flat=True)
 
-    # Filter out numbers that are already in DB
-    available_numbers = [
-        n.phone_number for n in numbers if n.phone_number not in existing_numbers]
+    # Fallback if location lookup fails
+    if not data:
+        data = {
+            "city": None,
+            "region": None,
+            "country": "US",
+            "area_code": None
+        }
+
+    supported_local_countries = ["US", "CA"]  # countries Twilio supports
+    country_code = data.get("country") or "US"
+
+    if country_code not in supported_local_countries:
+        country_code = "US"  # fallback to default
+
+    # Optional: filter by area code if available
+    area_code = request.GET.get("area_code")
+
+    try:
+        if area_code :
+            numbers = client.available_phone_numbers(country_code).local.list(
+                sms_enabled=True,
+                voice_enabled=True,
+                limit=4,
+                area_code=area_code
+            )
+        else:
+             numbers = client.available_phone_numbers(country_code).local.list(
+                sms_enabled=True,
+                voice_enabled=True,
+                limit=4,
+            )
+            
+    except Exception as e:
+        return error_response(code=500, message=f"Failed to fetch numbers: {str(e)}")
+
+    existing_numbers = PhoneNumber.objects.values_list("phone_number", flat=True)
+
+    available_numbers = [n.phone_number for n in numbers if n.phone_number not in existing_numbers]
 
     if not available_numbers:
-        return error_response(code=404 , message="No new available numbers found")
+        return error_response(code=404, message="No new available numbers found")
 
-    # Shuffle the list randomly
     random.shuffle(available_numbers)
-
     return Response(available_numbers, status=200)
 
 
@@ -314,7 +368,7 @@ def get_call_summary(client, phone_number, user_timezone="UTC"):
                     received_count += 1
                     
             elif c.status in ["no-answer", "busy", "failed"]:
-                    print("yes i am im")
+                   
                     missed_count += 1
             else:
                 outgoing_count += 1
@@ -524,22 +578,33 @@ def list_hours_of_operation(request):
 @api_view(['POST', 'PUT'])
 @permission_classes([IsAuthenticated])
 def manage_hours_of_operation(request):
-    """
-    Create or update hours for multiple days at once.
-    POST: create
-    PUT: update
-    """
-    
-    serializer = HoursOfOperationSerializer(data=request.data, context={'request': request})
-    if serializer.is_valid():
-        obj = serializer.save()  # single object
-        save_knowdege_data(request)
-        return Response({
-            "message": "Hours saved successfully",
-            "days": obj.days  # obj.days is already a list
-        }, status=200)
-   
-    return Response(serializer.errors, status=400)
+    day_groups = request.data.get('day_groups', [])
+    if not isinstance(day_groups, list):
+        return Response({"error": "day_groups must be a list"}, status=400)
+
+    user = request.user
+    # Delete previous entries if needed
+    HoursOfOperation.objects.filter(user=user).delete()
+
+    saved_groups = []
+    for group_data in day_groups:
+        serializer = HoursOfOperationSerializer(data=group_data, context={'request': request})
+        if serializer.is_valid():
+            obj = serializer.save()  # Creates a new record for each group
+            saved_groups.append({
+                "id": obj.id,
+                "days": obj.days,
+                "start_time": obj.start_time.strftime("%H:%M"),
+                "end_time": obj.end_time.strftime("%H:%M")
+            })
+        else:
+            return Response(serializer.errors, status=400)
+
+    return Response({
+        "message": "Hours saved successfully",
+        "day_groups": saved_groups
+    }, status=200)
+
 
 
 
@@ -630,7 +695,10 @@ def get_user_data_dict(user):
         "phone_numbers": phone_numbers_data,
         "hours_of_operation": HoursOfOperationSerializer(hours_of_operation, many=True).data,
         "call_data": CallDataSerializer(call_data, many=True).data,
-        "selected_voice_id": ai.vapi_assistant_id if ai else None
+        "selected_voice_id": ai.vapi_assistant_id if ai else None,
+        "ai_name": ai.name if ai else None,
+        "ring_count": int(ai.ring) if ai.ring else None
+        
     }
 
     return response_data
@@ -715,3 +783,36 @@ def save_update_priocity_contact(request):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         print("serializer.errors",serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+    
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])    
+def fetch_sms_history(request):
+    user = request.user
+    number = PhoneNumber.objects.get(user=user)
+    from_number = request.GET.get("from_number")
+    print("number",number.phone_number)
+    try :
+        messages = client.messages.list(
+            to= TWILIO_PHONE_NUMBER,
+            # to=number.phone_number,
+            from_=from_number
+        )
+        
+        print("messages",messages)
+
+        sms_history = []
+        for msg in messages:
+            sms_history.append({
+                "from": msg.from_,
+                "to": msg.to,
+                "body": msg.body,
+                "status": msg.status,
+                "direction": msg.direction,
+                "date_sent": str(msg.date_sent)
+            })
+        return Response(sms_history, status=200)    
+            
+    except Exception as e:
+        return Response(e)

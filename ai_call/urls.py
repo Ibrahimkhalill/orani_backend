@@ -43,6 +43,8 @@ urlpatterns = [
     
     #save priority contact
     path('priority-contacts/', views.save_update_priocity_contact, name='create_or_update_priority_contact'),
+    
+    path("get-sms-history/user/", views.fetch_sms_history)
 ]
     
     

@@ -9,8 +9,9 @@ class AIAssistant(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     vapi_assistant_id = models.CharField(max_length=100, blank=True, null=True)
     name = models.CharField(max_length=200)
-    voice_settings = models.JSONField(default=dict)
+    voice_settings = models.JSONField(default=dict, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    ring = models.CharField(max_length=10, blank=True, null=True)
 
 
 class PhoneNumber(models.Model):
@@ -121,6 +122,7 @@ class HoursOfOperation(models.Model):
     days = MultiSelectField(choices=WorkingDay.choices)
     start_time = models.TimeField()
     end_time = models.TimeField()
+    is_active= models.BooleanField(default=True )
 
     def __str__(self):
         return f"{self.user.email} - {', '.join(self.days)}: {self.start_time} to {self.end_time}"

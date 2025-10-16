@@ -77,13 +77,10 @@ class HoursOfOperationSerializer(serializers.ModelSerializer):
         days = validated_data.pop('days')
         start_time = validated_data['start_time']
         end_time = validated_data['end_time']
-        
-        HoursOfOperation.objects.filter(user=user).delete()
 
-        
-        obj, created = HoursOfOperation.objects.update_or_create(
+        obj = HoursOfOperation.objects.create(
             user=user,
-            defaults={'start_time': start_time, 'end_time': end_time, 'days': days}
+            start_time = start_time, end_time= end_time, days= days
         )
         return obj
 
@@ -173,7 +170,7 @@ from .models import AIAssistant
 class AIAssistantSerializer(serializers.ModelSerializer):
     class Meta:
         model = AIAssistant
-        fields = ['user', 'vapi_assistant_id', 'name', 'voice_settings', 'created_at']
+        fields = ['user', 'vapi_assistant_id', 'name', 'voice_settings', 'ring', 'created_at']
         read_only_fields = ['created_at']
         
 class PriorityContactSerializer(serializers.ModelSerializer):
