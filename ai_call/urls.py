@@ -5,7 +5,7 @@ urlpatterns = [
     path('get/available-phone-number', views.get_virtual_numbers),
     path('post/assign-phone-number', views.save_phone_number),
     path('get/assign-phone-number', views.get_assigned_phone_number),
-    path("twilio/incoming-call/", views.twilio_incoming_call),
+    path("incoming-call/", views.twilio_incoming_call),
     path("get/call-history/", views.user_call_logs),
     
     #company data
@@ -24,7 +24,7 @@ urlpatterns = [
     
     #service - hour
     
-    path('service-hours/', views.list_hours_of_operation, name='list_hours_of_operation'),  # GET
+    path('service-hours/', views.BookListView.as_view(), name='list_hours_of_operation'),  # GET
     path('service-hours/manage/', views.manage_hours_of_operation, name='manage_hours_of_operation'),  # POST/PUT
     
     
@@ -41,10 +41,13 @@ urlpatterns = [
     
     path('ai-assistant/', views.create_or_update_ai_assistant, name='create_or_update_ai_assistant'),
     
+    path('get/ai-assistant/data/', views.get_assistant_data, name='get_assistant_data'),
+    
     #save priority contact
     path('priority-contacts/', views.save_update_priocity_contact, name='create_or_update_priority_contact'),
     
-    path("get-sms-history/user/", views.fetch_sms_history)
+    path("get-sms-history/user/", views.fetch_sms_history),
+    
 ]
     
     

@@ -14,4 +14,9 @@ urlpatterns = [
     path('password-reset/confirm/', views.reset_password),
     path('password-change/', views.change_password),
     path('reset/otp-verify/', views.verify_otp_reset),
+    
+    
+    
+    
+    path('task/profile/submit/', views.test_submit),
 ]

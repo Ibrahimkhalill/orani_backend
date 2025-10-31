@@ -1,15 +1,11 @@
 from django.utils.dateparse import parse_datetime
 from .models import Call, PhoneNumber
 from rest_framework.decorators import api_view
-from django.shortcuts import render
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
-# Create your views here.
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth.password_validation import validate_password
 from rest_framework import status
 from .serializers import *
 from orani_main.utils import error_response
@@ -23,6 +19,10 @@ import os
 from datetime import datetime
 import pytz  # optional, for timezone conversion
 import requests
+from twilio.twiml.voice_response import VoiceResponse
+from rest_framework import generics
+from twilio.twiml.voice_response import VoiceResponse , Dial
+
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILLIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILLIO_AUTH_TOKEN")
@@ -33,7 +33,26 @@ client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 print("client",TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN)
 
 
+
 import requests
+
+
+def genrate_push_token(request):
+    with open(r"C:\Users\Ibrahim Khalil\Desktop\Ibrahim Work\django\orani_app\ai_call\service_account.json") as f:
+        fcm_json = json.load(f)
+
+
+    # Create Push Credential
+    push_credential = client.chat.credentials.create(
+        type="fcm",
+        friendly_name="voice-push-credential-fcm",
+        secret=json.dumps(fcm_json)
+    )
+
+    print("Push Credential SID:", push_credential.sid)
+    
+    
+
 
 def get_user_location(request):
     # Get IP from request
@@ -61,7 +80,7 @@ def get_client_ip(request):
     return ip
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+# @permission_classes([IsAuthenticated])
 def get_virtual_numbers(request):
     data = get_user_location(request)
     
@@ -273,12 +292,17 @@ def log_incoming_call(data):
 @api_view(["POST"])
 def twilio_incoming_call(request):
     # Twilio sends POST data
-    data = request.data
-    call = log_incoming_call(data)
-    if call:
-        return Response({"message": "Call logged"}, status=200)
-    else:
-        return error_response({"error": "Number not found"}, status=404)
+    from_number = request.POST.get('From')  # customer real number
+    to_number = request.POST.get('To')      # your Twilio number
+
+    print(f"📞 Incoming call from {from_number} to {to_number}")
+    response = VoiceResponse()
+    # এখন কলটা তোমার app user (ধরা যাক 'alice') কে পাঠাও
+    dial = response.dial()
+    dial.client('38')  # Twilio client identity — তোমার app এ register করা user
+
+    return HttpResponse(str(response), content_type='text/xml')
+
 
 
 @api_view(["GET"])
@@ -514,7 +538,13 @@ def create_or_update_ai_assistant(request):
     print(serializer.errors)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_assistant_data(request):
+   
+    assistant = AIAssistant.objects.filter(user=request.user).first()
+    serializer = AIAssistantSerializer(assistant)
+    return Response(serializer.data)
 
 # -------- BookingLink CRUD --------
 @api_view(["GET", "POST"])
@@ -564,15 +594,22 @@ def booking_link_detail(request, pk):
     
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def list_hours_of_operation(request):
-    """
-    List all hours of operation for the current user.
-    """
-    hours = HoursOfOperation.objects.filter(user=request.user)
-    serializer = HoursOfOperationSerializer(hours, many=True)
-    return Response(serializer.data)
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def list_hours_of_operation(request):
+#     """
+#     List all hours of operation for the current user.
+#     """
+#     hours = HoursOfOperation.objects.filter(user=request.user)
+#     serializer = HoursOfOperationSerializer(hours, many=True)
+#     return Response(serializer.data)
+
+
+
+class BookListView(generics.ListAPIView):
+    queryset = HoursOfOperation.objects.all()
+    serializer_class = HoursOfOperationSerializer
+    permission_classes = [IsAuthenticated]
 
 
 @api_view(['POST', 'PUT'])
@@ -609,7 +646,7 @@ def manage_hours_of_operation(request):
 
 
 
-from twilio.twiml.voice_response import VoiceResponse , Dial
+
 
 
 
@@ -650,9 +687,13 @@ from twilio.jwt.access_token.grants import VoiceGrant
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_twilio_token(request):
+    
+    
+    
     api_key = os.getenv("TWILLIO_API_KEY")         
     api_secret = os.getenv("TWILLIO_API_SECRET") 
     outgoing_app_sid = os.getenv("TWILLIO_OUTGOING_APP_SID")
+    push_credential_sid = os.getenv("PUSH_CREDENTIAL_SID")
     identity = str(request.user.id) 
     print("api_key, api_secret, outgoing_app_sid", api_key, api_secret, outgoing_app_sid)
 
@@ -660,15 +701,14 @@ def get_twilio_token(request):
     token = AccessToken(TWILIO_ACCOUNT_SID, api_key, api_secret, identity=identity)
     voice_grant = VoiceGrant(
         outgoing_application_sid=outgoing_app_sid,
-        incoming_allow=True
+        incoming_allow=True,
+        push_credential_sid=push_credential_sid
     )
     token.add_grant(voice_grant)
 
 
     # In Python 3, to_jwt() returns a string
     return JsonResponse({"token": token.to_jwt(), "identity": identity})
-
-
 
 
 
@@ -789,6 +829,7 @@ def save_update_priocity_contact(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])    
 def fetch_sms_history(request):
+    # genrate_push_token(request)
     user = request.user
     number = PhoneNumber.objects.get(user=user)
     from_number = request.GET.get("from_number")

@@ -8,3 +8,5 @@ venv310/
 .env
 *.db
 env/
+
+.service_accounts.json

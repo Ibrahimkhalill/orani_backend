@@ -16,10 +16,11 @@ from .serializers import (
     CustomUserUpdateSerializer
 
 )
-
+from django.core.files.storage import default_storage
+import datetime
 from django.http import JsonResponse
 import re
-
+from dateutil import parser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -534,3 +535,63 @@ def change_password(request):
     user.set_password(new_password)
     user.save()
     return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)
+
+
+
+
+
+
+@api_view(['POST'])
+def test_submit(request):
+    errors = {}
+
+    # Validate name (charfield)
+    name = request.data.get("name")
+    if not name:
+        errors['name'] = "Name is required."
+    
+    # Validate age (integer)
+    age = request.data.get("age")
+    if age is None:
+        errors['age'] = "Age is required."
+    else:
+        try:
+            if isinstance(age, str) and age.isdigit():
+                age = int(age)
+            elif isinstance(age, int):
+                pass
+            else:
+                raise ValueError
+        except:
+            errors['age'] = "Age must be an integer."
+    
+    # Validate image
+    image = request.FILES.get("image")
+    if not image:
+        errors['image'] = "Image is required."
+    
+    # Validate ISO 8601 datetime
+    submitted_at = request.data.get("submitted_at")
+    if not submitted_at:
+        errors['submitted_at'] = "submitted_at (ISO 8601 date/time) is required."
+    else:
+        try:
+            submitted_at_obj = parser.isoparse(submitted_at)
+        except (ValueError, TypeError):
+            errors['submitted_at'] = "submitted_at must be a valid ISO 8601 datetime."
+    
+    # If there are errors, return all of them
+    if errors:
+        return Response({"errors": errors}, status=400)
+    
+    # Save image if present
+    path = default_storage.save(f"test_uploads/{image.name}", image)
+    image_url = default_storage.url(path)
+    
+    # Return all submitted data
+    return Response({
+        "name": name,
+        "age": age,
+        "image_url": image_url,
+        "submitted_at": submitted_at_obj.isoformat()
+    })

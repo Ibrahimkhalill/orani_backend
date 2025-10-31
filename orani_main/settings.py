@@ -50,7 +50,8 @@ INSTALLED_APPS = [
     'apscheduler',
     'corsheaders',
     'ai_call',
-    'subscribtion'
+    'subscribtion',
+    'drf_yasg'
 
 
 ]

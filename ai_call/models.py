@@ -11,7 +11,7 @@ class AIAssistant(models.Model):
     name = models.CharField(max_length=200)
     voice_settings = models.JSONField(default=dict, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    ring = models.CharField(max_length=10, blank=True, null=True)
+    ring = models.CharField(max_length=10, blank=True, null=True, default="0")
 
 
 class PhoneNumber(models.Model):
