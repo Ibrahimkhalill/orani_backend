@@ -345,8 +345,6 @@ def verify_otp(request):
                 details={"otp": ["The OTP has expired"]}
             )
 
-
-
         user.is_verified = True
         user.save()
         otp_obj.delete()
