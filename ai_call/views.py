@@ -37,6 +37,7 @@ print("client",TWILIO_ACCOUNT_SID,TWILIO_AUTH_TOKEN)
 import requests
 
 
+
 def genrate_push_token(request):
     with open(r"C:\Users\Ibrahim Khalil\Desktop\Ibrahim Work\django\orani_app\ai_call\service_account.json") as f:
         fcm_json = json.load(f)
@@ -94,11 +95,12 @@ def get_virtual_numbers(request):
             "area_code": None
         }
 
-    supported_local_countries = ["US", "CA"]  # countries Twilio supports
-    country_code = data.get("country") or "US"
+    supported_local_countries = ["US", "c","PH"]
+
+    country_code = data.get("country") or "CA"
 
     if country_code not in supported_local_countries:
-        country_code = "US"  # fallback to default
+        country_code = "CA"  # fallback to default
 
     # Optional: filter by area code if available
     area_code = request.GET.get("area_code")
@@ -117,8 +119,11 @@ def get_virtual_numbers(request):
                 voice_enabled=True,
                 limit=4,
             )
+             
+             print("PH",numbers)
             
     except Exception as e:
+        print("dd", e)
         return error_response(code=500, message=f"Failed to fetch numbers: {str(e)}")
 
     existing_numbers = PhoneNumber.objects.values_list("phone_number", flat=True)
